@@ -1,1 +1,4 @@
-moviepy==2.0.0.dev2  # Ya sirf 'moviepy' likhein
+python-telegram-bot
+moviepy
+pymongo
+dnspython
