@@ -1,24 +1,24 @@
-# Python ka official image use karein
+# 1. Python ka lightweight version use kar rahe hain
 FROM python:3.10-slim
 
-EXPOSE 8080
-CMD ["python", "main.py"]
-
-# System updates aur FFmpeg install karein (MoviePy ke liye zaroori hai)
+# 2. System updates aur FFMPEG install karna (MoviePy ke liye zaroori hai)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libmagic1 \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-# App directory banayein
+# 3. Working directory set karein
 WORKDIR /app
 
-# Requirements copy aur install karein
+# 4. Requirements file copy karein aur install karein
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Baaki saara code copy karein
+# 5. Baaki saara code copy karein
 COPY . .
 
-# Bot ko start karne ki command
+# 6. Flask server (Koyeb Health Check) ke liye port open karein
+EXPOSE 8080
+
+# 7. Bot start karne ki command
 CMD ["python", "main.py"]
