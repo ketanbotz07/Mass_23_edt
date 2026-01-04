@@ -1,6 +1,9 @@
 # Python ka official image use karein
 FROM python:3.10-slim
 
+EXPOSE 8080
+CMD ["python", "main.py"]
+
 # System updates aur FFmpeg install karein (MoviePy ke liye zaroori hai)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
