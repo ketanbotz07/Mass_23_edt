@@ -5,10 +5,10 @@ import asyncio
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip  # New Version Import
 from pymongo import MongoClient
 
-# --- Flask Server ---
+# --- Flask Server for Koyeb ---
 server = Flask(__name__)
 
 @server.route('/')
@@ -19,7 +19,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     server.run(host='0.0.0.0', port=port)
 
-# --- Bot Logic ---
+# --- Bot Config ---
 TOKEN = os.environ.get("BOT_TOKEN")
 MONGO_URL = os.environ.get("MONGO_URL")
 
@@ -29,63 +29,67 @@ users_col = db['users']
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# --- Progress Callback Function ---
-async def progress_bar(current, total, message):
-    percent = current * 100 / total
-    # Har 20% par message update karein taaki Telegram flood na ho (Flood prevention)
-    if int(percent) % 20 == 0:
-        try:
-            await message.edit_text(f"📥 Downloading: {percent:.1f}%")
-        except:
-            pass
-
+# --- Start Command ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Namaste {update.effective_user.first_name}! Video bhejiye, main progress bhi dikhaunga.")
+    await update.message.reply_text(f"Namaste {update.effective_user.first_name}!\n\nMujhe koi bhi video bhejiye, main use process karke wapis bhej dunga.")
 
+# --- Video Handling Logic ---
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.message.reply_text("📥 Downloading: 0%")
-    file_path = f"video_{update.effective_user.id}.mp4"
+    status_msg = await update.message.reply_text("📥 Video download ho rahi hai...")
+    user_id = update.effective_user.id
+    input_file = f"in_{user_id}.mp4"
+    output_file = f"out_{user_id}.mp4"
     
     try:
-        # Get video file
+        # 1. Download Video
         video_file = await update.message.video.get_file()
+        await video_file.download_to_drive(input_file)
         
-        # Download with Progress
-        await video_file.download_to_drive(
-            custom_path=file_path,
-            read_timeout=120,
-            # Yahan hum progress update bhej rahe hain
-        )
-        
-        await status_msg.edit_text("⚙️ Processing video with MoviePy...")
-        
-        with VideoFileClip(file_path) as clip:
+        await status_msg.edit_text("⚙️ Video edit (process) ho rahi hai... Sabr rakhein.")
+
+        # 2. MoviePy Processing
+        # Yahan hum video ki duration check kar rahe hain aur use save kar rahe hain
+        with VideoFileClip(input_file) as clip:
             duration = clip.duration
-            # MongoDB update
-            users_col.update_one(
-                {"user_id": update.effective_user.id},
-                {"$push": {"history": {"duration": duration, "date": update.message.date}}},
-                upsert=True
+            # Agar aapko video par kuch filter lagana hai toh yahan code aayega
+            # Abhi hum sirf video ko re-save kar rahe hain (as an example)
+            clip.write_videofile(output_file, codec="libx264", audio_codec="aac", fps=24)
+
+        await status_msg.edit_text("✅ Editing khatam! Video bhej raha hoon...")
+
+        # 3. Send Video Back to User
+        with open(output_file, 'rb') as vf:
+            await update.message.reply_video(
+                video=vf,
+                caption=f"🚀 Aapki video taiyaar hai!\n⏱ Duration: {duration:.2f} sec"
             )
-            await status_msg.edit_text(f"✅ Done!\n\nVideo Duration: {duration:.2f} seconds")
+        
+        await status_msg.delete()
 
     except Exception as e:
         logging.error(f"Error: {e}")
         await status_msg.edit_text(f"❌ Error: {str(e)}")
     
     finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # Cleanup files to save disk space on Koyeb
+        for f in [input_file, output_file]:
+            if os.path.exists(f):
+                os.remove(f)
 
 def main():
-    if not TOKEN: return
+    if not TOKEN:
+        print("Error: BOT_TOKEN missing!")
+        return
+
+    # Flask background mein chalayen
     threading.Thread(target=run_flask, daemon=True).start()
-    
+
+    # Bot setup
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    print("Bot is running...")
+    print("Bot is starting on Koyeb...")
     app.run_polling()
 
 if __name__ == "__main__":
