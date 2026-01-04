@@ -2,7 +2,7 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-from moviepy.editor import VideoFileClip, concatenate_videoclips, vfx
+from moviepy import VideoFileClip, concatenate_videoclips, vfx
 import time
 
 # Logging setup
