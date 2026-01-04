@@ -1,74 +1,58 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-from moviepy import VideoFileClip, concatenate_videoclips, vfx
-import time
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from moviepy import VideoFileClip
+from pymongo import MongoClient
 
-# Logging setup
+# Environment Variables
+TOKEN = os.environ.get("BOT_TOKEN")
+MONGO_URL = os.environ.get("MONGO_URL")
+
+# MongoDB Setup
+client = MongoClient(MONGO_URL)
+db = client['bot_database']
+users_col = db['users']
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-TOKEN = os.getenv("BOT_TOKEN")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    # MongoDB mein user save karna (RAM par load nahi padega)
+    users_col.update_one({"user_id": user.id}, {"$set": {"username": user.username}}, upsert=True)
+    await update.message.reply_text(f"Namaste {user.first_name}! Main Koyeb par live hoon.")
 
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text('Movie Clip bhejo, main 2-sec auto-cut aur zoom ke saath edit kar dunga!')
-
-def process_video(update: Update, context: CallbackContext):
-    message = update.message.reply_text("Video mil gayi! Edit ho rahi hai, thoda intezar karein...")
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = await update.message.reply_text("Video download ho rahi hai...")
+    file_path = f"{update.effective_user.id}.mp4"
     
-    video_file = context.bot.get_file(update.message.video.file_id)
-    input_path = "input_video.mp4"
-    output_path = "output_edited.mp4"
-    video_file.download(input_path)
-
     try:
-        clip = VideoFileClip(input_path)
-        # 10 minute movie clip logic
-        duration = int(clip.duration)
-        segments = []
+        video_file = await update.message.video.get_file()
+        await video_file.download_to_drive(file_path)
 
-        for i in range(0, duration, 2):
-            start_t = i
-            end_t = min(i + 2, duration)
-            sub = clip.subclip(start_t, end_t)
-
-            # Har 2 second mein Auto-Zoom effect
-            if (i // 2) % 2 == 0:
-                # 20% Zoom-in aur center align
-                sub = sub.resize(1.2).set_position(("center", "center"))
+        await msg.edit_text("Processing with MoviePy...")
+        # MoviePy v2.0 optimized import
+        with VideoFileClip(file_path) as clip:
+            duration = clip.duration
+            await msg.edit_text(f"Video Length: {duration} seconds\nData saved to MongoDB.")
             
-            segments.append(sub)
-
-        # Saare tukdon ko jodna
-        final_video = concatenate_videoclips(segments)
-        
-        # Reels/Shorts ke liye Auto-Resize (Vertical 9:16)
-        final_video = final_video.resize(height=1280) # HD Height
-        final_video = final_video.crop(x_center=final_video.w/2, width=720)
-
-        # Rendering (Fast settings for Koyeb)
-        final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", threads=4, preset="ultrafast")
-
-        # Video wapas bhejna
-        context.bot.send_video(chat_id=update.effective_chat.id, video=open(output_path, 'rb'), caption="Auto-Edited by your Bot")
-        message.delete()
-
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
-    
-    # Files clean up
-    if os.path.exists(input_path): os.remove(input_path)
-    if os.path.exists(output_path): os.remove(output_path)
+        await msg.edit_text(f"Error: {str(e)}")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.video, process_video))
-    
-    # Koyeb health check ke liye web server (Optional but recommended)
-    updater.start_polling()
-    updater.idle()
+    if not TOKEN or not MONGO_URL:
+        print("Error: BOT_TOKEN ya MONGO_URL set nahi hai!")
+        return
 
-if __name__ == '__main__':
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    
+    print("Bot is running on Koyeb...")
+    app.run_polling()
+
+if __name__ == "__main__":
     main()
