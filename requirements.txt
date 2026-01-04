@@ -1,4 +1,5 @@
 python-telegram-bot
-moviepy
-pymongo
 flask
+moviepy==2.0.0.dev2
+pymongo
+dnspython
