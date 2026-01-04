@@ -1,5 +1,6 @@
 python-telegram-bot
 flask
-moviepy==2.0.0.dev2
+moviepy==1.0.3
+proglog
 pymongo
 dnspython
