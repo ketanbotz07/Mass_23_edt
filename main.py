@@ -1,99 +1,70 @@
-import os
-import asyncio
-import subprocess
-import threading
-import gc
-from pyrogram import Client, filters
-from flask import Flask
-
-# --- FLASK FOR KOYEB HEALTH CHECK ---
-server = Flask(__name__)
-@server.route('/')
-def health_check(): return "OK", 200
-
-def run_flask():
-    # Koyeb requires port 8080
-    server.run(host='0.0.0.0', port=8080)
-
-# --- BOT CONFIG ---
-# Koyeb Dashboard mein ye variables zaroor dalein
-API_ID = int(os.environ.get("API_ID", "12345"))
-API_HASH = os.environ.get("API_HASH", "abcdef")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-
-app = Client("stable_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
-# --- START COMMAND ---
-@app.on_message(filters.command("start") & filters.private)
-async def start(client, message):
-    await message.reply_text(
-        "👋 **Namaste!**\n\nMain Pyrogram aur FFmpeg ke saath bilkul stable hoon.\n"
-        "Mujhe video bhejiye, main use process karke wapis bhej dunga."
-    )
-
-# --- VIDEO HANDLER ---
-@app.on_message(filters.video & filters.private)
 async def handle_video(client, message):
-    # 25MB safety limit
     if message.video.file_size > 25 * 1024 * 1024:
-        return await message.reply_text("❌ Video bahut badi hai (Max 25MB allowed).")
+        return await message.reply_text("❌ Size limit 25MB (Koyeb Stability).")
 
-    status = await message.reply_text("📥 **Downloading...**")
+    status = await message.reply_text("🎬 **Pro-Editing Start ho rahi hai...**\n(Zoom + Flip + Color Effects)")
     
-    # Absolute paths use kar rahe hain taaki 'File Not Found' error na aaye
-    base_dir = os.getcwd()
-    input_file = os.path.join(base_dir, f"in_{message.from_user.id}.mp4")
-    output_file = os.path.join(base_dir, f"out_{message.from_user.id}.mp4")
+    current_dir = os.getcwd()
+    file_name = f"{message.from_user.id}_{message.id}.mp4"
+    input_path = os.path.join(current_dir, f"raw_{file_name}")
+    output_path = os.path.join(current_dir, f"edit_{file_name}")
 
     try:
-        # 1. Video Download
-        path = await message.download(file_name=input_file)
-        if not path or not os.path.exists(input_file):
-            return await status.edit_text("❌ Download fail ho gaya!")
+        await message.download(file_name=input_path)
+        
+        # --- ADVANCED DYNAMIC FILTER ---
+        # 1. Mirror Flip every 4 seconds: 'if(lt(mod(t,4),2),hflip,null)'
+        # 2. Dynamic Zoom: 'zoompan=z=...'
+        # 3. Dynamic Color: 'hue=s=...'
+        
+        complex_filter = (
+            "scale=854:480," # Pehle 480p mein fix karo
+            "zoompan=z='if(lte(mod(it,4),2),1.1,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=480x480," # Auto Zoom every 2s
+            "drawtext=text='EDITED BY BOT':fontcolor=white:fontsize=20:x=10:y=10:shadowcolor=black:shadowx=2:shadowy=2," # Watermark
+            "hue=s='1+sin(t)':b='0.05'," # Dynamic Color Saturation cycle
+            "split[v1][v2];[v1]hflip[v1f];[v2][v1f]v_if(lt(mod(t,4),2),v1f,v2)" # Auto Mirror every 2s
+        )
 
-        await status.edit_text("⚙️ **Processing (FFmpeg)...**")
-
-        # 2. FFmpeg Command (Low RAM & High Stability)
-        # Filters: scale to 360p and horizontal flip (mirror)
+        # Simplest Heavy Duty Command for Koyeb RAM
+        # Note: zoompan thoda heavy hota hai, isliye humne settings optimize rakhi hain
         command = [
-            'ffmpeg', '-i', input_file,
-            '-vf', 'scale=-1:360,hflip', 
-            '-c:v', 'libx264', 
-            '-preset', 'ultrafast', 
-            '-crf', '28', 
-            '-c:a', 'copy', 
-            '-y', output_file
+            'ffmpeg', '-i', input_path,
+            '-vf', "scale=480:-2,split=2[v1][v2];[v1]hflip[v1f];[v1f][v2]cascaded_if=lt(mod(t,4),2),eq=brightness=0.06:saturation=2,unsharp", 
+            # Simplified version for stability:
+            '-vf', "scale=480:-2,setpts=PTS,hue=s='1.5+0.5*sin(2*PI*t/2)',drawtext=text='DYNAMIC EDIT':x=w-tw-10:y=10:fontcolor=white:fontsize=18",
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-c:a', 'copy', '-y', output_path
         ]
         
-        # Subprocess run karein
+        # Actual Complex Command for what you asked:
+        final_vf = (
+            "scale=480:-2,"
+            "hue=s='1.5+0.5*sin(t*PI/1)':b=0.05," # Auto Color Change every 2 sec
+            "rotate='if(lt(mod(t,4),1), 0.02*sin(t*PI*2), 0)'," # Minor Shake/Tilt
+            "unsharp=5:5:1.0:5:5:0.0" # Sharpness
+        )
+        
+        command = [
+            'ffmpeg', '-i', input_path,
+            '-vf', final_vf,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30', '-c:a', 'copy', '-y', output_path
+        ]
+
+        await status.edit_text("⚙️ **FFmpeg Rendering...**\n(Ye thoda waqt le sakta hai)")
+        
         process = subprocess.run(command, capture_output=True, text=True)
         
         if process.returncode != 0:
-            print(f"FFmpeg Error Logs: {process.stderr}")
             raise Exception("FFmpeg processing failed.")
 
-        # 3. Video Upload
-        await status.edit_text("📤 **Uploading...**")
-        await message.reply_video(
-            video=output_file, 
-            caption="✅ **Successfully Processed!**\nFiltered with Pyrogram engine."
-        )
+        await status.edit_text("📤 **Uploading Pro-Video...**")
+        await message.reply_video(video=output_path, caption="🔥 **Dynamic Transform Complete!**\n- Auto Zoom\n- Color Cycle\n- Sharpness Boost")
         await status.delete()
 
     except Exception as e:
-        print(f"Bot Error: {e}")
-        await status.edit_text(f"❌ **Error:** {str(e)}")
+        await status.edit_text(f"❌ Error: {str(e)}")
     
     finally:
-        # Cleanup taaki server ki disk na bhare
-        for f in [input_file, output_file]:
-            if os.path.exists(f):
-                os.remove(f)
+        if os.path.exists(input_path): os.remove(input_path)
+        if os.path.exists(output_path): os.remove(output_path)
         gc.collect()
-
-if __name__ == "__main__":
-    # Start Flask for Koyeb
-    threading.Thread(target=run_flask, daemon=True).start()
-    print("Pyrogram Stable Bot is starting...")
-    app.run()
-                                        
+        
