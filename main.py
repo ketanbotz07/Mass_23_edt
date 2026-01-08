@@ -2,67 +2,60 @@ import os
 import logging
 import asyncio
 import threading
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from flask import Flask
 
-# Logging setup
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- FLASK SERVER (For Health Checks) ---
+# Flask Server
 server = Flask(__name__)
-
+@server.route('/')
 @server.route('/kaithhealthcheck')
 @server.route('/kaithheathcheck')
-@server.route('/')
-def health():
-    return "Bot is Running!", 200
+def health(): return "Bot is Alive!", 200
 
 def run_flask():
-    # Leapcell standard port 8080 use karega
     server.run(host='0.0.0.0', port=8080)
 
-# --- PYROGRAM BOT ---
+# Bot Client
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# Important: in_memory=True taaki database file ka error na aaye
 app = Client(
-    "my_bot",
+    "kaith_bot",
     api_id=int(API_ID),
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    in_memory=True 
+    in_memory=True
 )
 
 @app.on_message(filters.command("start"))
-async def start_command(client, message):
-    logger.info(f"Start received from {message.from_user.id}")
-    await message.reply_text("✨ **Bot Start Ho Gaya Hai!**\n\nBhai main zinda hoon, ab aap kaam shuru kar sakte hain.")
+async def start(client, message):
+    logger.info(f"Command /start by {message.from_user.id}")
+    await message.reply_text("✅ **Bot Successfully Connected!**\nMain bilkul sahi kaam kar raha hoon.")
 
 @app.on_message(filters.video)
-async def handle_video(client, message):
-    await message.reply_text("📥 Video mil gayi! Processing shuru kar raha hoon...")
+async def video(client, message):
+    await message.reply_text("🎬 Video detected! Processing...")
 
-# --- MAIN EXECUTION ---
-async def start_bot():
-    logger.info("🚀 Starting Pyrogram Client...")
+async def main():
+    # 1. Flask ko background mein start karein
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    # 2. Bot ko start karein
+    logger.info("🚀 Bot login sequence shuru ho raha hai...")
     await app.start()
-    logger.info("✅ Bot is Online and Polling!")
-    # Bot ko chalu rakhne ke liye infinite loop
-    await asyncio.Event().wait()
+    logger.info("🟢 BOT IS ONLINE NOW!")
+    
+    # 3. Bot ko active rakhein
+    await idle()
+    
+    # 4. Stop gracefully
+    await app.stop()
 
 if __name__ == "__main__":
-    # 1. Flask ko alag thread mein chalayein
-    t = threading.Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-
-    # 2. Bot ko asyncio loop mein chalayein
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(start_bot())
-    except KeyboardInterrupt:
-        pass
+    asyncio.get_event_loop().run_until_complete(main())
     
