@@ -5,54 +5,53 @@ from pyrogram import Client, idle
 from flask import Flask
 from threading import Thread
 
-# Logging setup
+# Logging Setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 1. Flask Health Check Server
+# 1. Flask App Setup (Minimal)
 app = Flask(__name__)
-@app.route('/')
+
 @app.route('/kaithhealthcheck')
 @app.route('/kaithheathcheck')
-def health_check():
-    return "OK", 200
+def health():
+    return "ALIVE", 200
 
 def run_flask():
-    # Leapcell standard port 8080
-    app.run(host='0.0.0.0', port=8080)
+    # threaded=True se multiple requests handle hongi bina bot ko block kiye
+    app.run(host='0.0.0.0', port=8080, threaded=True)
 
-# 2. Pyrogram Client Setup
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-
-# in_memory=True zaroori hai Leapcell ke liye taaki session file ka error na aaye
-bot = Client(
-    "kaith_session",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
+# 2. Pyrogram Client
+# in_memory=True Leapcell ke liye mandatory hai
+app_bot = Client(
+    "kaith_bot",
+    api_id=int(os.environ.get("API_ID")),
+    api_hash=os.environ.get("API_HASH"),
+    bot_token=os.environ.get("BOT_TOKEN"),
     in_memory=True
 )
 
-async def start_bot():
-    logger.info("🚀 Starting Pyrogram Client...")
+async def main():
+    # Flask ko background thread mein start karein
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    logger.info("🚀 Starting Bot...")
     try:
-        await bot.start()
-        logger.info("✅ BOT IS LIVE!")
+        await app_bot.start()
+        logger.info("✅ Bot is online and listening!")
         await idle()
     except Exception as e:
-        logger.error(f"❌ Error during bot startup: {e}")
+        logger.error(f"❌ Crash Report: {e}")
     finally:
-        await bot.stop()
+        # Proper cleanup
+        if app_bot.is_connected:
+            await app_bot.stop()
 
 if __name__ == "__main__":
-    # Flask ko alag thread mein chalayein
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-
-    # Bot ko main loop mein chalayein
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_bot())
-    
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+        
