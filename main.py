@@ -1,61 +1,58 @@
 import os
 import logging
 import asyncio
-import threading
-from pyrogram import Client, filters, idle
+from pyrogram import Client, idle
 from flask import Flask
+from threading import Thread
 
-# Logging
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask Server
-server = Flask(__name__)
-@server.route('/')
-@server.route('/kaithhealthcheck')
-@server.route('/kaithheathcheck')
-def health(): return "Bot is Alive!", 200
+# 1. Flask Health Check Server
+app = Flask(__name__)
+@app.route('/')
+@app.route('/kaithhealthcheck')
+@app.route('/kaithheathcheck')
+def health_check():
+    return "OK", 200
 
 def run_flask():
-    server.run(host='0.0.0.0', port=8080)
+    # Leapcell standard port 8080
+    app.run(host='0.0.0.0', port=8080)
 
-# Bot Client
-API_ID = os.environ.get("API_ID")
-API_HASH = os.environ.get("API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# 2. Pyrogram Client Setup
+API_ID = int(os.environ.get("API_ID", 0))
+API_HASH = os.environ.get("API_HASH", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-app = Client(
-    "kaith_bot",
-    api_id=int(API_ID),
+# in_memory=True zaroori hai Leapcell ke liye taaki session file ka error na aaye
+bot = Client(
+    "kaith_session",
+    api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
     in_memory=True
 )
 
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    logger.info(f"Command /start by {message.from_user.id}")
-    await message.reply_text("✅ **Bot Successfully Connected!**\nMain bilkul sahi kaam kar raha hoon.")
-
-@app.on_message(filters.video)
-async def video(client, message):
-    await message.reply_text("🎬 Video detected! Processing...")
-
-async def main():
-    # 1. Flask ko background mein start karein
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-    # 2. Bot ko start karein
-    logger.info("🚀 Bot login sequence shuru ho raha hai...")
-    await app.start()
-    logger.info("🟢 BOT IS ONLINE NOW!")
-    
-    # 3. Bot ko active rakhein
-    await idle()
-    
-    # 4. Stop gracefully
-    await app.stop()
+async def start_bot():
+    logger.info("🚀 Starting Pyrogram Client...")
+    try:
+        await bot.start()
+        logger.info("✅ BOT IS LIVE!")
+        await idle()
+    except Exception as e:
+        logger.error(f"❌ Error during bot startup: {e}")
+    finally:
+        await bot.stop()
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    # Flask ko alag thread mein chalayein
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+    # Bot ko main loop mein chalayein
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_bot())
     
