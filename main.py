@@ -5,49 +5,65 @@ from pyrogram import Client, idle
 from flask import Flask
 from threading import Thread
 
-# Logging
-logging.basicConfig(level=logging.INFO)
+# 1. Logging Setup
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
+# 2. Flask Health Check Server
 app = Flask(__name__)
 
 @app.route('/')
+@app.route('/health')
 @app.route('/kaithhealthcheck')
-@app.route('/kaithheathcheck')
-def health():
-    return "ALIVE", 200
+@app.route('/kaithheathcheck') # Handles logs spelling error
+def health_check():
+    return "Bot is running perfectly!", 200
 
 def run_flask():
-    # Threaded=True se performance behtar hoti hai
-    app.run(host='0.0.0.0', port=8080, threaded=True)
+    # Leapcell standard port is 8080
+    app.run(host='0.0.0.0', port=8080)
 
-async def main():
-    # Start Flask fast
-    Thread(target=run_flask, daemon=True).start()
-    logger.info("📡 Health Server Online")
+# 3. Pyrogram Client Setup
+API_ID = os.environ.get("API_ID")
+API_HASH = os.environ.get("API_HASH")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-    # Bot setup with optimized settings
-    bot = Client(
-        "kaith_session",
-        api_id=int(os.environ.get("API_ID")),
-        api_hash=os.environ.get("API_HASH"),
-        bot_token=os.environ.get("BOT_TOKEN"),
-        in_memory=True,
-        workers=4 # Kam workers takki memory bach sake
-    )
+bot = Client(
+    "kaith_bot_session",
+    api_id=int(API_ID) if API_ID else None,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+    in_memory=True # Essential for cloud hosting
+)
 
+async def start_bot():
+    # Pehle Flask ko alag thread mein chalu karenge
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    logger.info("📡 Flask Health Check Server started on port 8080")
+
+    # Bot start karne ki koshish
+    logger.info("🚀 Starting Pyrogram Bot...")
     try:
-        logger.info("🚀 Bot starting...")
         await bot.start()
-        logger.info("✅ BOT IS ONLINE AND STABLE!")
+        logger.info("✅ BOT IS SUCCESSFULLY ONLINE!")
         await idle()
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
+        logger.error(f"❌ Bot failed to start: {e}")
     finally:
         if bot.is_connected:
             await bot.stop()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    if not all([API_ID, API_HASH, BOT_TOKEN]):
+        logger.error("❌ API_ID, API_HASH, or BOT_TOKEN missing in Env Variables!")
+    else:
+        try:
+            asyncio.run(start_bot())
+        except KeyboardInterrupt:
+            logger.info("👋 Bot stopped manually.")
     
