@@ -1,3 +1,2 @@
 pyrogram
 flask
-tgcrypto==1.2.5
