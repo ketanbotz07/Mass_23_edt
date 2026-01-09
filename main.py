@@ -5,53 +5,53 @@ from pyrogram import Client, idle
 from flask import Flask
 from threading import Thread
 
-# Logging Setup
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 1. Flask App Setup (Minimal)
+# 1. Flask Minimal Server
 app = Flask(__name__)
 
 @app.route('/kaithhealthcheck')
-@app.route('/kaithheathcheck')
 def health():
-    return "ALIVE", 200
+    return "OK", 200
 
 def run_flask():
-    # threaded=True se multiple requests handle hongi bina bot ko block kiye
-    app.run(host='0.0.0.0', port=8080, threaded=True)
+    # Leapcell port 8080
+    app.run(host='0.0.0.0', port=8080)
 
 # 2. Pyrogram Client
-# in_memory=True Leapcell ke liye mandatory hai
-app_bot = Client(
-    "kaith_bot",
-    api_id=int(os.environ.get("API_ID")),
-    api_hash=os.environ.get("API_HASH"),
-    bot_token=os.environ.get("BOT_TOKEN"),
-    in_memory=True
+# Env variables check
+API_ID = os.environ.get("API_ID")
+API_HASH = os.environ.get("API_HASH")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+
+if not all([API_ID, API_HASH, BOT_TOKEN]):
+    logger.error("❌ Environment Variables missing!")
+    exit(1)
+
+bot = Client(
+    "kaith_session",
+    api_id=int(API_ID),
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+    in_memory=True  # Important for Leapcell
 )
 
-async def main():
-    # Flask ko background thread mein start karein
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
+async def start_bot():
+    # Flask ko alag thread mein chalana zaroori hai
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
     
     logger.info("🚀 Starting Bot...")
-    try:
-        await app_bot.start()
-        logger.info("✅ Bot is online and listening!")
-        await idle()
-    except Exception as e:
-        logger.error(f"❌ Crash Report: {e}")
-    finally:
-        # Proper cleanup
-        if app_bot.is_connected:
-            await app_bot.stop()
+    await bot.start()
+    logger.info("✅ Bot is online!")
+    await idle()
+    await bot.stop()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
+        asyncio.run(start_bot())
+    except (KeyboardInterrupt, SystemExit):
         pass
-        
