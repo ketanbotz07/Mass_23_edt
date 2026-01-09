@@ -1,4 +1,3 @@
 pyrogram
 flask
-pysocks
-tgcrypto
+pyaes
